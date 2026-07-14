@@ -1,0 +1,12 @@
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\bin\Debug\net8.0\Users.Domain.deps.json
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\bin\Debug\net8.0\Users.Domain.dll
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\bin\Debug\net8.0\Users.Domain.pdb
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\Users.Domain.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\Users.Domain.AssemblyInfoInputs.cache
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\Users.Domain.AssemblyInfo.cs
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\Users.Domain.csproj.CoreCompileInputs.cache
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\Users.Domain.sourcelink.json
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\Users.Domain.dll
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\refint\Users.Domain.dll
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\Users.Domain.pdb
+C:\Users\Joao Eduardo\source\repos\FGC\fcg-users-api\src\Users.Domain\obj\Debug\net8.0\ref\Users.Domain.dll
