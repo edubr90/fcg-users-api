@@ -1,5 +1,5 @@
 using System.Text;
-using MassTransit;
+using Amazon.SQS;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -8,6 +8,7 @@ using Users.Application.Interfaces;
 using Users.Application.Services;
 using Users.Domain.Entities;
 using Users.Domain.Interfaces;
+using Users.Infrastructure.Messaging;
 using Users.Infrastructure.Persistence;
 using Users.Infrastructure.Repositories;
 using Users.Infrastructure.Security;
@@ -24,17 +25,14 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IUserService, UserService>();
 
-builder.Services.AddMassTransit(x =>
+builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
+builder.Services.AddAWSService<IAmazonSQS>();
+builder.Services.AddScoped<ISqsPublisher, SqsPublisher>();
+
+builder.Services.AddStackExchangeRedisCache(options =>
 {
-    x.UsingRabbitMq((ctx, cfg) =>
-    {
-        cfg.Host(builder.Configuration["RabbitMQ:Host"], builder.Configuration["RabbitMQ:VirtualHost"] ?? "/", h =>
-        {
-            h.Username(builder.Configuration["RabbitMQ:Username"] ?? "guest");
-            h.Password(builder.Configuration["RabbitMQ:Password"] ?? "guest");
-        });
-        cfg.ConfigureEndpoints(ctx);
-    });
+    options.Configuration = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+    options.InstanceName = "fcg:";
 });
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -68,6 +66,7 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "bearer",
         BearerFormat = "JWT"
     });
+
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {

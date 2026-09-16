@@ -1,7 +1,7 @@
-using MassTransit;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using NUnit.Framework;
-using FCG.Shared.Events;
 using Users.Application.DTOs;
 using Users.Application.Interfaces;
 using Users.Application.Services;
@@ -16,17 +16,28 @@ public class UserServiceTests
     private Mock<IUserRepository> _repoMock = null!;
     private Mock<IUnitOfWork> _uowMock = null!;
     private Mock<IJwtService> _jwtMock = null!;
-    private Mock<IPublishEndpoint> _publishMock = null!;
+    private Mock<ISqsPublisher> _sqsMock = null!;
+    private Mock<IDistributedCache> _cacheMock = null!;
+    private Mock<IConfiguration> _configMock = null!;
     private UserService _service = null!;
 
     [SetUp]
-    public void SetUp()
+    public void Setup()
     {
         _repoMock = new Mock<IUserRepository>();
         _uowMock = new Mock<IUnitOfWork>();
         _jwtMock = new Mock<IJwtService>();
-        _publishMock = new Mock<IPublishEndpoint>();
-        _service = new UserService(_repoMock.Object, _uowMock.Object, _jwtMock.Object, _publishMock.Object);
+        _sqsMock = new Mock<ISqsPublisher>();
+        _cacheMock = new Mock<IDistributedCache>();
+        _configMock = new Mock<IConfiguration>();
+
+        _configMock.Setup(c => c["SQS:UserCreatedQueueUrl"]).Returns("https://sqs.sa-east-1.amazonaws.com/123/fcg-user-created");
+        _cacheMock.Setup(c => c.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
+
+        _service = new UserService(
+            _repoMock.Object, _uowMock.Object, _jwtMock.Object,
+            _sqsMock.Object, _cacheMock.Object, _configMock.Object);
     }
 
     [Test]
@@ -34,12 +45,12 @@ public class UserServiceTests
     {
         _repoMock.Setup(r => r.ExistsByEmailAsync("new@test.com", default)).ReturnsAsync(false);
         _jwtMock.Setup(j => j.GenerateToken(It.IsAny<User>())).Returns("fake-token");
-        _publishMock.Setup(p => p.Publish(It.IsAny<UserCreatedEvent>(), default)).Returns(Task.CompletedTask);
+        _sqsMock.Setup(s => s.PublishAsync(It.IsAny<string>(), It.IsAny<object>(), default)).Returns(Task.CompletedTask);
 
         var request = new RegisterUserRequest("New User", "new@test.com", "Pass@123");
         var result = await _service.RegisterAsync(request);
 
-        _publishMock.Verify(p => p.Publish(It.Is<UserCreatedEvent>(e => e.Email == "new@teste.com"), default), Times.Once);
+        _sqsMock.Verify(s => s.PublishAsync(It.IsAny<string>(), It.IsAny<object>(), default), Times.Once);
         Assert.That(result.Token, Is.EqualTo("fake-token"));
     }
 
@@ -76,7 +87,10 @@ public class UserServiceTests
     [Test]
     public async Task GetByIdAsync_NotFound_ShouldThrow()
     {
+        _cacheMock.Setup(c => c.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[]?)null);
         _repoMock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), default)).ReturnsAsync((User?)null);
+
         Assert.ThrowsAsync<KeyNotFoundException>(() => _service.GetByIdAsync(Guid.NewGuid()));
     }
 

@@ -1,5 +1,7 @@
+using System.Text.Json;
 using FCG.Shared.Events;
-using MassTransit;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Configuration;
 using Users.Application.DTOs;
 using Users.Application.Interfaces;
 using Users.Domain.Entities;
@@ -12,18 +14,24 @@ public class UserService : IUserService
     private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IJwtService _jwtService;
-    private readonly IPublishEndpoint _publishEndpoint;
+    private readonly ISqsPublisher _sqsPublisher;
+    private readonly IDistributedCache _cache;
+    private readonly string _userCreatedQueueUrl;
 
     public UserService(
         IUserRepository userRepository,
         IUnitOfWork unitOfWork,
         IJwtService jwtService,
-        IPublishEndpoint publishEndpoint)
+        ISqsPublisher sqsPublisher,
+        IDistributedCache cache,
+        IConfiguration configuration)
     {
         _userRepository = userRepository;
         _unitOfWork = unitOfWork;
         _jwtService = jwtService;
-        _publishEndpoint = publishEndpoint;
+        _sqsPublisher = sqsPublisher;
+        _cache = cache;
+        _userCreatedQueueUrl = configuration["SQS:UserCreatedQueueUrl"] ?? string.Empty;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterUserRequest request, CancellationToken cancellationToken = default)
@@ -39,13 +47,14 @@ public class UserService : IUserService
         await _userRepository.AddAsync(user, cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
 
-        await _publishEndpoint.Publish(new UserCreatedEvent
-        {
-            UserId = user.Id,
-            Name = user.Name,
-            Email = user.Email,
-            CreatedAt = user.CreatedAt
-        }, cancellationToken);
+        if (!string.IsNullOrEmpty(_userCreatedQueueUrl))
+            await _sqsPublisher.PublishAsync(_userCreatedQueueUrl, new UserCreatedEvent
+            {
+                UserId = user.Id,
+                Name = user.Name,
+                Email = user.Email,
+                CreatedAt = user.CreatedAt
+            }, cancellationToken);
 
         var token = _jwtService.GenerateToken(user);
         return new AuthResponse(token, MapToResponse(user));
@@ -74,9 +83,20 @@ public class UserService : IUserService
 
     public async Task<UserResponse> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
+        var cacheKey = $"user:{id}";
+        var cached = await _cache.GetStringAsync(cacheKey, cancellationToken);
+        if (cached is not null)
+            return JsonSerializer.Deserialize<UserResponse>(cached)!;
+
         var user = await _userRepository.GetByIdAsync(id, cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
-        return MapToResponse(user);
+
+        var response = MapToResponse(user);
+        await _cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(response),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10) },
+            cancellationToken);
+
+        return response;
     }
 
     public async Task<UserResponse> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken cancellationToken = default)
@@ -92,6 +112,7 @@ public class UserService : IUserService
 
         await _userRepository.UpdateAsync(user, cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
+        await _cache.RemoveAsync($"user:{id}", cancellationToken);
         return MapToResponse(user);
     }
 
@@ -108,6 +129,7 @@ public class UserService : IUserService
 
         await _userRepository.UpdateAsync(user, cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
+        await _cache.RemoveAsync($"user:{id}", cancellationToken);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
@@ -118,6 +140,7 @@ public class UserService : IUserService
         user.Deactivate();
         await _userRepository.UpdateAsync(user, cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
+        await _cache.RemoveAsync($"user:{id}", cancellationToken);
     }
 
     public async Task PromoteToAdminAsync(Guid id, CancellationToken cancellationToken = default)
@@ -128,9 +151,10 @@ public class UserService : IUserService
         user.PromoteToAdmin();
         await _userRepository.UpdateAsync(user, cancellationToken);
         await _unitOfWork.CommitAsync(cancellationToken);
+        await _cache.RemoveAsync($"user:{id}", cancellationToken);
     }
 
-    private void ValidatePassword(string password)
+    private static void ValidatePassword(string password)
     {
         if (password.Length < 8) throw new ArgumentException("Password must be at least 8 characters long.");
         if (!password.Any(char.IsLetter)) throw new ArgumentException("Password must contain at least one letter.");
